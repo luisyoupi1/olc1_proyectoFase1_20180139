@@ -1,0 +1,180 @@
+package olc1.proyecto.analizadores;
+
+import java.util.List;
+import java.util.ArrayList;
+
+import olc1.proyecto.ast.*;
+import olc1.proyecto.interprete.Tipo;
+
+parser code {:
+  @Override
+  public void report_error(String message, Object info) {
+    System.err.println("Error sintáctico: " + message);
+  }
+:};
+
+/* ===== TERMINALES ===== */
+terminal VAR, INT, DOUBLE, BOOL, CHAR, STRING;
+terminal TRUE, FALSE;
+terminal IF, ELSE;
+terminal WHILE, DO;
+terminal BREAK, CONTINUE;
+terminal PRINT;
+
+terminal SWITCH, CASE, DEFAULT;
+terminal FOR;
+
+terminal Integer INT_LIT;
+terminal Double DOUBLE_LIT;
+terminal String STRING_LIT;
+terminal String CHAR_LIT;
+terminal String ID;
+
+terminal IGUAL, DIF, MENIG, MAYIG, MEN, MAY;
+terminal AND, OR, XOR, NOT;
+
+terminal MAS, MENOS, POR, DIV, MOD, POT;
+
+terminal PTCOMA, DOSP, COMA;
+terminal PAR_ABRE, PAR_CIERRA;
+terminal LLAVE_ABRE, LLAVE_CIERRA;
+terminal ASIGN;
+
+/* ===== NO TERMINALES ===== */
+non terminal Object programa;
+non terminal Object lista;
+non terminal Instruccion inst;
+non terminal Instruccion bloque;
+non terminal Tipo tipo;
+non terminal Expresion exp;
+
+non terminal Object casos;
+non terminal Object caso;
+
+non terminal Instruccion forInit;
+non terminal Instruccion forUpdate;
+
+/* ===== PRECEDENCIAS ===== */
+precedence left OR;
+precedence left XOR;
+precedence left AND;
+precedence left IGUAL, DIF;
+precedence left MEN, MENIG, MAY, MAYIG;
+precedence left MAS, MENOS;
+precedence left POR, DIV, MOD;
+precedence right POT;
+precedence right NOT;
+
+start with programa;
+
+/* ===== GRAMÁTICA ===== */
+
+programa ::= lista:l {: RESULT = l; :};
+
+lista ::=
+    lista:l inst:i {: ((List)l).add(i); RESULT = l; :}
+  | inst:i {: List tmp = new ArrayList(); tmp.add(i); RESULT = tmp; :}
+;
+
+bloque ::=
+    LLAVE_ABRE LLAVE_CIERRA {: RESULT = new Bloque(new ArrayList()); :}
+  | LLAVE_ABRE lista:l LLAVE_CIERRA {: RESULT = new Bloque((List)l); :}
+;
+
+tipo ::=
+    INT {: RESULT = Tipo.INT; :}
+  | DOUBLE {: RESULT = Tipo.DOUBLE; :}
+  | BOOL {: RESULT = Tipo.BOOL; :}
+  | CHAR {: RESULT = Tipo.CHAR; :}
+  | STRING {: RESULT = Tipo.STRING; :}
+;
+
+/* ===== INSTRUCCIONES ===== */
+
+inst ::=
+    PRINT PAR_ABRE exp:e PAR_CIERRA PTCOMA
+      {: RESULT = new PrintIns(e); :}
+
+  | VAR ID:id DOSP tipo:t ASIGN exp:e PTCOMA
+      {: RESULT = new Declaracion(id, t, e); :}
+
+  | VAR ID:id DOSP tipo:t PTCOMA
+      {: RESULT = new Declaracion(id, t, null); :}
+
+  | ID:id ASIGN exp:e PTCOMA
+      {: RESULT = new Asignacion(id, e); :}
+
+  | bloque:b
+      {: RESULT = b; :}
+
+  | IF PAR_ABRE exp:e PAR_CIERRA bloque:b
+      {: RESULT = new IfIns(e, b, null); :}
+
+  | IF PAR_ABRE exp:e PAR_CIERRA bloque:b ELSE bloque:be
+      {: RESULT = new IfIns(e, b, be); :}
+
+  | WHILE PAR_ABRE exp:e PAR_CIERRA bloque:b
+      {: RESULT = new WhileIns(e, b); :}
+
+  | DO bloque:b WHILE PAR_ABRE exp:e PAR_CIERRA PTCOMA
+      {: RESULT = new DoWhileIns(e, b); :}
+
+  | BREAK PTCOMA
+      {: RESULT = new BreakIns(); :}
+
+  | CONTINUE PTCOMA
+      {: RESULT = new ContinueIns(); :}
+
+  | SWITCH PAR_ABRE exp:e PAR_CIERRA LLAVE_ABRE casos:cs LLAVE_CIERRA
+      {: RESULT = new SwitchIns(e, (List)cs); :}
+
+  | FOR PAR_ABRE forInit:ini PTCOMA exp:cond PTCOMA forUpdate:upd PAR_CIERRA bloque:b
+      {: RESULT = new ForIns(ini, cond, upd, b); :}
+;
+
+/* ===== SWITCH ===== */
+
+casos ::=
+    casos:cs caso:c {: ((List)cs).add(c); RESULT = cs; :}
+  | caso:c {: List l = new ArrayList(); l.add(c); RESULT = l; :}
+;
+
+caso ::=
+    CASE exp:cv DOSP lista:lst
+      {: RESULT = new CasoSwitch(cv, (List)lst, false); :}
+  | DEFAULT DOSP lista:lst
+      {: RESULT = new CasoSwitch(null, (List)lst, true); :}
+;
+
+/* ===== FOR ===== */
+
+forInit ::=
+    ID:id ASIGN exp:e {: RESULT = new Asignacion(id, e); :}
+;
+
+forUpdate ::=
+    ID:id ASIGN exp:e {: RESULT = new Asignacion(id, e); :}
+;
+
+/* ===== EXPRESIONES ===== */
+
+exp ::=
+    exp:e1 MAS exp:e2 {: RESULT = new Suma(e1, e2); :}
+  | exp:e1 MENOS exp:e2 {: RESULT = new Resta(e1, e2); :}
+  | exp:e1 POR exp:e2 {: RESULT = new Multiplicacion(e1, e2); :}
+  | exp:e1 DIV exp:e2 {: RESULT = new Division(e1, e2); :}
+  | exp:e1 MOD exp:e2 {: RESULT = new Modulo(e1, e2); :}
+  | exp:e1 POT exp:e2 {: RESULT = new Potencia(e1, e2); :}
+
+  | MENOS exp:e {: RESULT = new Negativo(e); :}
+
+  | PAR_ABRE exp:e PAR_CIERRA {: RESULT = e; :}
+
+  | INT_LIT:i {: RESULT = new LiteralEntero(i); :}
+  | DOUBLE_LIT:d {: RESULT = new LiteralDouble(d); :}
+  | STRING_LIT:s {: RESULT = new LiteralString(s); :}
+  | CHAR_LIT:c {: RESULT = new LiteralChar(c); :}
+  | TRUE {: RESULT = new LiteralBool(true); :}
+  | FALSE {: RESULT = new LiteralBool(false); :}
+  | ID:id {: RESULT = new Acceso(id); :}
+;
