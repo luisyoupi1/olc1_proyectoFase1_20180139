@@ -1,0 +1,340 @@
+package olc1.proyecto.analizadores;
+
+import java.util.List;
+import java.util.ArrayList;
+
+import olc1.proyecto.ast.*;
+import olc1.proyecto.interprete.Tipo;
+
+parser code {:
+  @Override
+  public void report_error(String message, Object info) {
+    System.err.println("Error sintáctico: " + message);
+  }
+:};
+
+/* ================== TERMINALES ================== */
+terminal VAR, INT, DOUBLE, BOOL, CHAR, STRING, VOID;
+terminal TRUE, FALSE;
+
+terminal IF, ELSE, WHILE, DO, FOR;
+terminal BREAK, CONTINUE, RETURN;
+
+terminal PRINT;
+terminal START;
+
+terminal SWITCH, CASE, DEFAULT;   /* ✅ switch */
+
+terminal Integer INT_LIT;
+terminal Double DOUBLE_LIT;
+terminal String STRING_LIT;
+terminal String CHAR_LIT;
+terminal String ID;
+
+terminal MAS, MENOS, POR, DIV, MOD, POT;
+terminal IGUAL, DIF, MEN, MENIG, MAY, MAYIG;
+terminal AND, OR, XOR, NOT;
+terminal INC, DEC;
+
+terminal PAR_ABRE, PAR_CIERRA;
+terminal LLAVE_ABRE, LLAVE_CIERRA;
+terminal COR_ABRE, COR_CIERRA;
+terminal PTCOMA, DOSP, COMA;
+terminal ASIGN;
+
+/* ===== FASE 3: Listas ===== */
+terminal NEW, LIST, PUNTO, APPEND, REMOVE, FIND;
+
+/* ================== NO TERMINALES ================== */
+non terminal List items;
+non terminal Object item;
+
+non terminal Instruccion inst;
+non terminal Instruccion bloque;
+
+non terminal Tipo tipo;
+
+non terminal Expresion exp;
+non terminal Expresion unario;
+non terminal Expresion primario;
+
+non terminal Instruccion forInit;
+non terminal Instruccion forUpdate;
+
+/* vectores */
+non terminal Integer dims;
+non terminal Object indices;
+non terminal Object listaExp;
+
+/* fase 2 */
+non terminal Instruccion startins;
+non terminal Instruccion metodo;
+non terminal List params;
+non terminal Parametro param;
+non terminal List callargs;
+
+/* switch */
+non terminal List casos;
+non terminal Object caso;
+
+/* ================== PRECEDENCIAS ================== */
+precedence left OR;
+precedence left XOR;
+precedence left AND;
+precedence left IGUAL, DIF;
+precedence left MEN, MENIG, MAY, MAYIG;
+precedence left MAS, MENOS;
+precedence left POR, DIV, MOD;
+precedence right POT;
+precedence right NOT;
+
+start with items;
+
+/* ================== PROGRAMA ================== */
+items ::=
+      items:l item:x {: ((List)l).add(x); RESULT = l; :}
+    | item:x          {: List l = new ArrayList(); l.add(x); RESULT = l; :}
+;
+
+item ::=
+      inst:i     {: RESULT = i; :}
+    | metodo:m   {: RESULT = m; :}
+    | startins:s {: RESULT = s; :}
+;
+
+/* ================== START main(); ================== */
+startins ::=
+      START ID:id PAR_ABRE PAR_CIERRA PTCOMA
+        {: RESULT = new StartIns(id, idleft, idright); :}
+;
+
+/* ================== BLOQUE ================== */
+bloque ::=
+      LLAVE_ABRE LLAVE_CIERRA
+        {: RESULT = new Bloque(new ArrayList()); :}
+    | LLAVE_ABRE items:l LLAVE_CIERRA
+        {: RESULT = new Bloque((List)l); :}
+;
+
+/* ================== TIPOS ================== */
+tipo ::=
+      INT    {: RESULT = Tipo.INT; :}
+    | DOUBLE {: RESULT = Tipo.DOUBLE; :}
+    | BOOL   {: RESULT = Tipo.BOOL; :}
+    | CHAR   {: RESULT = Tipo.CHAR; :}
+    | STRING {: RESULT = Tipo.STRING; :}
+;
+
+/* ================== VECTORES ================== */
+dims ::=
+      dims:d COR_ABRE COR_CIERRA {: RESULT = d + 1; :}
+    | COR_ABRE COR_CIERRA        {: RESULT = 1; :}
+;
+
+indices ::=
+      indices:l COR_ABRE exp:e COR_CIERRA
+        {: ((List)l).add(e); RESULT = l; :}
+    | COR_ABRE exp:e COR_CIERRA
+        {: List l = new ArrayList(); l.add(e); RESULT = l; :}
+;
+
+listaExp ::=
+      listaExp:l COMA exp:e {: ((List)l).add(e); RESULT = l; :}
+    | exp:e                {: List l = new ArrayList(); l.add(e); RESULT = l; :}
+;
+
+/* ================== INSTRUCCIONES ================== */
+inst ::=
+      PRINT PAR_ABRE exp:e PAR_CIERRA PTCOMA
+        {: RESULT = new PrintIns(e); :}
+
+    /* declaración */
+    | VAR ID:id DOSP tipo:t ASIGN exp:e PTCOMA
+        {: RESULT = new Declaracion(id, t, e); :}
+
+    | VAR ID:id DOSP tipo:t PTCOMA
+        {: RESULT = new Declaracion(id, t, null); :}
+
+    /* vectores */
+    | VAR ID:id DOSP tipo:t dims:d ASIGN exp:e PTCOMA
+        {: RESULT = new VectorDeclaracion(id, t, d, e, idleft, idright); :}
+
+    | VAR ID:id DOSP tipo:t dims:d PTCOMA
+        {: RESULT = new VectorDeclaracion(id, t, d, null, idleft, idright); :}
+
+    | ID:id indices:idx ASIGN exp:e PTCOMA
+        {: RESULT = new VectorAsignacion(id, (List)idx, e, idleft, idright); :}
+
+    /* asignación normal */
+    | ID:id ASIGN exp:e PTCOMA
+        {: RESULT = new Asignacion(id, e); :}
+
+    | ID:id INC PTCOMA {: RESULT = new IncIns(id); :}
+    | ID:id DEC PTCOMA {: RESULT = new DecIns(id); :}
+
+    /* ===== FASE 3: List<int> lista = new List(); ===== */
+    | LIST MEN tipo:t MAY ID:id ASIGN NEW LIST PAR_ABRE PAR_CIERRA PTCOMA
+        {: RESULT = new ListDeclaracion(id, t, idleft, idright); :}
+
+    /* lista.append(exp); */
+    | ID:id PUNTO APPEND PAR_ABRE exp:e PAR_CIERRA PTCOMA
+        {: RESULT = new ListAppendIns(id, e, idleft, idright); :}
+
+    /* llamada como instrucción */
+    | ID:id PAR_ABRE PAR_CIERRA PTCOMA
+        {: RESULT = new LlamadaIns(id, new ArrayList(), idleft, idright); :}
+
+    | ID:id PAR_ABRE callargs:ca PAR_CIERRA PTCOMA
+        {: RESULT = new LlamadaIns(id, (List)ca, idleft, idright); :}
+
+    | bloque:b {: RESULT = b; :}
+
+    | IF PAR_ABRE exp:e PAR_CIERRA bloque:b
+        {: RESULT = new IfIns(e, b, null); :}
+
+    | IF PAR_ABRE exp:e PAR_CIERRA bloque:b ELSE bloque:be
+        {: RESULT = new IfIns(e, b, be); :}
+
+    | WHILE PAR_ABRE exp:e PAR_CIERRA bloque:b
+        {: RESULT = new WhileIns(e, b); :}
+
+    | DO bloque:b WHILE PAR_ABRE exp:e PAR_CIERRA PTCOMA
+        {: RESULT = new DoWhileIns(e, b); :}
+
+    | FOR PAR_ABRE forInit:i PTCOMA exp:e PTCOMA forUpdate:u PAR_CIERRA bloque:b
+        {: RESULT = new ForIns(i, e, u, b); :}
+
+    | BREAK PTCOMA {: RESULT = new BreakIns(); :}
+    | CONTINUE PTCOMA {: RESULT = new ContinueIns(); :}
+
+    /* ✅ Return con posición del token RETURN */
+    | RETURN exp:e PTCOMA
+     {: RESULT = new ReturnIns(e, 0, 0); :}
+
+   | RETURN PTCOMA
+    {: RESULT = new ReturnIns(null, 0, 0); :}
+
+    /* ✅ SWITCH */
+    | SWITCH PAR_ABRE exp:e PAR_CIERRA LLAVE_ABRE casos:cs LLAVE_CIERRA
+        {: RESULT = new SwitchIns(e, (List)cs); :}
+;
+
+/* ================== SWITCH: casos ================== */
+casos ::=
+      casos:cs caso:c {: ((List)cs).add(c); RESULT = cs; :}
+    | caso:c           {: List l = new ArrayList(); l.add(c); RESULT = l; :}
+;
+
+caso ::=
+      CASE exp:cv DOSP items:lst
+        {: RESULT = new CasoSwitch(cv, (List)lst, false); :}
+
+    | DEFAULT DOSP items:lst
+        {: RESULT = new CasoSwitch(null, (List)lst, true); :}
+;
+
+/* ================== FOR INIT/UPDATE ================== */
+forInit ::=
+      ID:id ASIGN exp:e {: RESULT = new Asignacion(id, e); :}
+;
+
+forUpdate ::=
+      ID:id ASIGN exp:e {: RESULT = new Asignacion(id, e); :}
+    | ID:id INC         {: RESULT = new IncIns(id); :}
+    | ID:id DEC         {: RESULT = new DecIns(id); :}
+;
+
+/* ================== EXPRESIONES ================== */
+exp ::=
+      exp:e1 MAS exp:e2   {: RESULT = new Suma(e1, e2); :}
+    | exp:e1 MENOS exp:e2 {: RESULT = new Resta(e1, e2); :}
+    | exp:e1 POR exp:e2   {: RESULT = new Multiplicacion(e1, e2); :}
+    | exp:e1 DIV exp:e2   {: RESULT = new Division(e1, e2); :}
+    | exp:e1 MOD exp:e2   {: RESULT = new Modulo(e1, e2); :}
+    | exp:e1 POT exp:e2   {: RESULT = new Potencia(e1, e2); :}
+
+    | exp:e1 MEN exp:e2    {: RESULT = new Menor(e1, e2); :}
+    | exp:e1 MENIG exp:e2  {: RESULT = new MenorIgual(e1, e2); :}
+    | exp:e1 MAY exp:e2    {: RESULT = new Mayor(e1, e2); :}
+    | exp:e1 MAYIG exp:e2  {: RESULT = new MayorIgual(e1, e2); :}
+    | exp:e1 IGUAL exp:e2  {: RESULT = new Igual(e1, e2); :}
+    | exp:e1 DIF exp:e2    {: RESULT = new Diferente(e1, e2); :}
+
+    | exp:e1 AND exp:e2    {: RESULT = new And(e1, e2); :}
+    | exp:e1 OR  exp:e2    {: RESULT = new Or(e1, e2); :}
+    | exp:e1 XOR exp:e2    {: RESULT = new Xor(e1, e2); :}
+
+    | unario:u             {: RESULT = u; :}
+;
+
+unario ::=
+      NOT unario:u   {: RESULT = new Not(u); :}
+    | MENOS unario:u {: RESULT = new Negativo(u); :}
+    | primario:p     {: RESULT = p; :}
+;
+
+primario ::=
+      PAR_ABRE tipo:t PAR_CIERRA unario:u {: RESULT = new Casteo(t, u); :}
+    | PAR_ABRE exp:e PAR_CIERRA           {: RESULT = e; :}
+
+    | INT_LIT:i    {: RESULT = new LiteralEntero(i); :}
+    | DOUBLE_LIT:d {: RESULT = new LiteralDouble(d); :}
+    | STRING_LIT:s {: RESULT = new LiteralString(s); :}
+    | CHAR_LIT:c   {: RESULT = new LiteralChar(c); :}
+    | TRUE         {: RESULT = new LiteralBool(true); :}
+    | FALSE        {: RESULT = new LiteralBool(false); :}
+
+    /* llamada como EXPRESION */
+    | ID:id PAR_ABRE PAR_CIERRA
+        {: RESULT = new LlamadaExp(id, new ArrayList(), idleft, idright); :}
+
+    | ID:id PAR_ABRE callargs:ca PAR_CIERRA
+        {: RESULT = new LlamadaExp(id, (List)ca, idleft, idright); :}
+
+    /* lista.remove(i) => valor */
+    | ID:id PUNTO REMOVE PAR_ABRE exp:e PAR_CIERRA
+        {: RESULT = new ListRemoveExp(id, e, idleft, idright); :}
+
+    /* algo.find(x) => bool (lista o vector) */
+    | ID:id PUNTO FIND PAR_ABRE exp:e PAR_CIERRA
+        {: RESULT = new FindExp(id, e, idleft, idright); :}
+
+    | ID:id indices:idx {: RESULT = new VectorAcceso(id, (List)idx, idleft, idright); :}
+    | ID:id             {: RESULT = new Acceso(id); :}
+
+    | COR_ABRE COR_CIERRA
+        {: RESULT = new VectorLiteral(new ArrayList()); :}
+
+    | COR_ABRE listaExp:l COR_CIERRA
+        {: RESULT = new VectorLiteral((List)l); :}
+;
+
+/* args para llamadas */
+callargs ::=
+      callargs:ca COMA exp:e {: ((List)ca).add(e); RESULT = ca; :}
+    | exp:e                 {: List l = new ArrayList(); l.add(e); RESULT = l; :}
+;
+
+/* ================== METODOS / FUNCIONES ================== */
+metodo ::=
+      VOID ID:id PAR_ABRE PAR_CIERRA bloque:b
+        {: RESULT = new MetodoIns(id, new java.util.ArrayList(), b, idleft, idright); :}
+
+    | VOID ID:id PAR_ABRE params:p PAR_CIERRA bloque:b
+        {: RESULT = new MetodoIns(id, (java.util.List)p, b, idleft, idright); :}
+
+    | tipo:t ID:id PAR_ABRE PAR_CIERRA bloque:b
+        {: RESULT = new FuncionIns(id, t, new java.util.ArrayList(), b, idleft, idright); :}
+
+    | tipo:t ID:id PAR_ABRE params:p PAR_CIERRA bloque:b
+        {: RESULT = new FuncionIns(id, t, (java.util.List)p, b, idleft, idright); :}
+;
+
+params ::=
+      params:ps COMA param:p {: ((List)ps).add(p); RESULT = ps; :}
+    | param:p               {: List l = new ArrayList(); l.add(p); RESULT = l; :}
+;
+
+param ::=
+      tipo:t ID:id {: RESULT = new Parametro(t, id, idleft, idright); :}
+;
